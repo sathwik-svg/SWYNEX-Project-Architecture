@@ -1,70 +1,62 @@
 import { supabase } from '@/lib/supabase';
 import type { Project, Task, ProjectWithTaskCount, TaskStatus, TaskPriority } from '@/types';
 
+// ---- Edge Function API ----
+
+const API_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/api`;
+
+async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const { data: session } = await supabase.auth.getSession();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+    ...(session.session?.access_token ? { 'X-Auth-Token': session.session.access_token } : {}),
+    ...((options.headers as Record<string, string>) || {}),
+  };
+
+  const res = await fetch(`${API_URL}${path}`, { ...options, headers });
+
+  if (!res.ok) {
+    let message = `Request failed (${res.status})`;
+    let details: unknown;
+    try {
+      const body = await res.json();
+      message = body.error || message;
+      details = body.details;
+    } catch {
+      // Non-JSON error response
+    }
+    const err = new Error(message) as Error & { status: number; details?: unknown };
+    err.status = res.status;
+    err.details = details;
+    throw err;
+  }
+
+  if (res.status === 204) return undefined as T;
+  return await res.json() as T;
+}
+
 // ---- Projects ----
 
 export async function fetchProjectsWithCounts(): Promise<ProjectWithTaskCount[]> {
-  const { data: projects, error } = await supabase
-    .from('projects')
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (error) throw error;
-  if (!projects || projects.length === 0) return [];
-
-  const { data: tasks, error: tasksError } = await supabase
-    .from('tasks')
-    .select('project_id, status');
-
-  if (tasksError) throw tasksError;
-
-  const counts = new Map<string, { total: number; todo: number; in_progress: number; done: number }>();
-  for (const p of projects) {
-    counts.set(p.id, { total: 0, todo: 0, in_progress: 0, done: 0 });
-  }
-  for (const t of tasks || []) {
-    const c = counts.get(t.project_id);
-    if (!c) continue;
-    c.total++;
-    if (t.status === 'todo') c.todo++;
-    else if (t.status === 'in_progress') c.in_progress++;
-    else if (t.status === 'done') c.done++;
-  }
-
-  return projects.map((p) => ({
-    ...p,
-    task_count: counts.get(p.id)!.total,
-    todo_count: counts.get(p.id)!.todo,
-    in_progress_count: counts.get(p.id)!.in_progress,
-    done_count: counts.get(p.id)!.done,
-  }));
+  return apiRequest<ProjectWithTaskCount[]>('/projects');
 }
 
 export async function createProject(name: string, description: string, color: string): Promise<Project> {
-  const { data, error } = await supabase
-    .from('projects')
-    .insert({ name, description: description || null, color })
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
+  return apiRequest<Project>('/projects', {
+    method: 'POST',
+    body: JSON.stringify({ name, description, color }),
+  });
 }
 
 export async function deleteProject(id: string): Promise<void> {
-  const { error } = await supabase.from('projects').delete().eq('id', id);
-  if (error) throw error;
+  await apiRequest<void>(`/projects/${id}`, { method: 'DELETE' });
 }
 
 // ---- Tasks ----
 
 export async function fetchTasks(projectId: string): Promise<Task[]> {
-  const { data, error } = await supabase
-    .from('tasks')
-    .select('*')
-    .eq('project_id', projectId)
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  return data || [];
+  return apiRequest<Task[]>(`/tasks?projectId=${projectId}`);
 }
 
 export async function createTask(
@@ -74,41 +66,35 @@ export async function createTask(
   status: TaskStatus,
   priority: TaskPriority,
 ): Promise<Task> {
-  const { data, error } = await supabase
-    .from('tasks')
-    .insert({
+  return apiRequest<Task>('/tasks', {
+    method: 'POST',
+    body: JSON.stringify({
       title,
-      description: description || null,
+      description,
       status,
       priority,
       project_id: projectId,
-    })
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
+    }),
+  });
 }
 
-export async function updateTaskStatus(id: string, status: TaskStatus): Promise<void> {
-  const { error } = await supabase
-    .from('tasks')
-    .update({ status, updated_at: new Date().toISOString() })
-    .eq('id', id);
-  if (error) throw error;
+export async function updateTaskStatus(id: string, status: TaskStatus): Promise<Task> {
+  return apiRequest<Task>(`/tasks/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  });
 }
 
 export async function updateTask(
   id: string,
   fields: { title?: string; description?: string; status?: TaskStatus; priority?: TaskPriority },
-): Promise<void> {
-  const { error } = await supabase
-    .from('tasks')
-    .update({ ...fields, updated_at: new Date().toISOString() })
-    .eq('id', id);
-  if (error) throw error;
+): Promise<Task> {
+  return apiRequest<Task>(`/tasks/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(fields),
+  });
 }
 
 export async function deleteTask(id: string): Promise<void> {
-  const { error } = await supabase.from('tasks').delete().eq('id', id);
-  if (error) throw error;
+  await apiRequest<void>(`/tasks/${id}`, { method: 'DELETE' });
 }
