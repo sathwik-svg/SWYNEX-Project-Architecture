@@ -15,7 +15,7 @@ export default function ProjectCard({ project, onOpen, onDelete }: ProjectCardPr
   return (
     <div
       onClick={onOpen}
-      className="group relative cursor-pointer bg-white rounded-2xl border border-slate-200 overflow-hidden hover:shadow-lg hover:border-slate-300 transition-all duration-300 hover:-translate-y-0.5"
+      className="group relative cursor-pointer bg-white rounded-2xl border border-slate-200 overflow-hidden hover:shadow-lg hover:border-slate-300 transition-all duration-300 hover:-translate-y-0.5 animate-slide-up"
     >
       <div className={`h-1.5 bg-gradient-to-r ${colors.gradient}`} />
       <div className="p-5">

@@ -23,7 +23,7 @@ export default function TaskCard({ task, onStatusChange, onEdit, onDelete }: Tas
   const isDone = task.status === 'done';
 
   return (
-    <div className="group bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md hover:border-slate-300 transition-all duration-200">
+    <div className="group bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md hover:border-slate-300 transition-all duration-200 animate-slide-up">
       <div className="flex items-start gap-2">
         <button
           onClick={() => onStatusChange(task.id, NEXT_STATUS[task.status])}
